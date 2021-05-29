@@ -1,5 +1,5 @@
-# CSE138_Assignment3
-Private repository for CSE138 - Distributed Systems - Assignment 3
+# CSE138_Assignment4
+Private repository for CSE138 - Distributed Systems - Assignment 4
 
 ## CruzIDs
 * `gswebb`
@@ -22,13 +22,13 @@ follow for our own server
 
 
 ## Team Contributions:
-* `all together:` We worked on the entire project together over a call with Visual Studio Code Live Share enabled. This allowed us to all look at and modify the same files. This included group debugging and talking over the ideas and implementation as a group. We alternated the roles of who would code while the others watched and helped. All work described below was done by the individual with the team supporting.
+* `all together:` 
 
-* `Garrett:` With the help of my groupmates, I added the helper endpoints for Vector Clock and Key Value update functionality. Also added helper endpoints for server functionality to PUT, GET, and DELETE without broadcasting to other instances as terminal cases. Built most of the basic functionality for the previous assignment that was reused here.
+* `Garrett:` 
 
-* `Rahul:` Designed the vector clock implementation that we used. Originally demonstrated potential use cases with drawn diagrams to determine when vector clocks should be incremented, passed back to clients, or requested to be updated from other replicas. The implementation was done with the help of my groupmates. 
+* `Rahul:`  
 
-* `Kai:` Setup the testing/debugging routine and performed most of the testings. Started the initial key-value-store-view operation which built the base structure for rest of the request handling.
+* `Kai:` 
 
 
 ## Acknowledgements:
