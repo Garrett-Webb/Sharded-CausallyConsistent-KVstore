@@ -29,6 +29,13 @@ saddr = ""
 views = ""
 views_list = []
 
+# dict contains all shards
+# ID: [list of nodes in shardID]
+shards = {}
+# ID of shard that this belongs to
+shardID = -1
+shardCount = -1
+
 class requestHandler(http.server.BaseHTTPRequestHandler):
     def _set_headers(self, response_code):
         self.send_response(response_code)
@@ -572,11 +579,41 @@ if __name__ == '__main__':
         views_list = views.split(",")
         if len(saddr) > 0:
             print("VIEWS: " + str(views))
+        shardCount = os.environ['SHARD_COUNT']
+        print("Shard Count: ", str(shardCount))
 
     except:
         print("main instance")
         main_flag = True
-        
+    
+    # Initialize shards list
+    if len(views_list) / shardCount >= 2:
+        print("enough in view to split into shards")
+        #TODO split views into shards and store in shards dict.
+        num_nodes_in_shard = len(views_list) / shardCount
+        num_nodes_so_far = 0
+        shardidx = 1
+        # Initialize empty list (of nodes) for each shard
+        for shard in range(1, shardCount+1):
+           shards[shard] = []
+
+        #sort nodes into shards
+        for view in views_list:
+            if num_nodes_so_far <= num_nodes_in_shard:
+                shards[shardidx].append(view)
+            else:
+                shardidx += 1
+                num_nodes_so_far = 0
+            num_nodes_so_far += 1
+        # if uneven # of nodes, add an extra node to the last shard
+        if( (len(views_list) % shardCount) == 1):
+            shards[shardidx-1].append(views_list[-1])
+        print(shards)
+
+    else:
+        print("not enough nodes to have redundancy in shards. exiting program now")
+        exit(0)
+    
     print(main_flag)
     x = 0
     for arg in argv:
