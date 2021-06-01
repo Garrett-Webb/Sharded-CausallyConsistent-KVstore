@@ -43,8 +43,18 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        print("\n[+] recieved GET request from: " + str(self.client_address[0]) + " to path: " + str(self.path) + "\n")
-        if "/update-vc-store" in str(self.path): # and any(self.client_address[0] in string for string in views_list):
+        print("\n[+] recieved GET request from: " + str(self.client_address[0]) + " to path: " + str(self.path) + "\n") 
+
+        # Shard GET operation
+        if "/key-value-store-shard/shard-ids" in str(self.path):
+            shard_ids = list(shards.keys())
+            print("shard ids are ", shard_ids)
+            self._set_headers(response_code=200)
+            response = bytes(json.dumps({"message": "Shard IDs retrieved successfully", "shard-ids": shard_ids}), 'utf-8')
+            self.wfile.write(response)
+
+        # VIEW operations
+        elif "/update-vc-store" in str(self.path): # and any(self.client_address[0] in string for string in views_list):
             print("vc to send back:")
             print(vc)
             self._set_headers(response_code=200)
@@ -76,7 +86,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                             # broadcast a view delete to each downed instance
                             r = requests.delete('http://' + x + "/broadcast-view-delete", timeout=1, allow_redirects=False, headers=self.headers, json={"socket-address" : y})
                         except:
-                            print("instance ", + y + " is either down or busy")
+                            print("instance ", y, " is either down or busy")
             
             #send response
             self._set_headers(response_code=200)
