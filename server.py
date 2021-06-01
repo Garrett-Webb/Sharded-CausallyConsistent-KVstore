@@ -45,12 +45,30 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         print("\n[+] recieved GET request from: " + str(self.client_address[0]) + " to path: " + str(self.path) + "\n") 
 
-        # Shard GET operation
+        # Shard GET operations
         if "/key-value-store-shard/shard-ids" in str(self.path):
             shard_ids = list(shards.keys())
             print("shard ids are ", shard_ids)
             self._set_headers(response_code=200)
             response = bytes(json.dumps({"message": "Shard IDs retrieved successfully", "shard-ids": shard_ids}), 'utf-8')
+            self.wfile.write(response)
+
+        elif "/key-value-store-shard/node-shard-id" in str(self.path):
+            self._set_headers(response_code=200)
+            response = bytes(json.dumps({"message": "Shard ID of the node retrieved successfully", "shard-id": shardID}), 'utf-8')
+            self.wfile.write(response)
+
+        elif "/key-value-store-shard/shard-id-members/" in str(self.path):
+            shardID_str = str(self.path).split("shard-id-members/",1)[1]
+            returndict = shards[int(shardID_str)]
+            print("returning dict:", returndict )
+            self._set_headers(response_code=200)
+            response = bytes(json.dumps({"message": "Members of shard ID retrieved successfully", "shard-id-members": returndict}), 'utf-8')
+            self.wfile.write(response)
+
+        elif "/key-value-store-shard/shard-id-key-count/" in str(self.path):
+            self._set_headers(response_code=200)
+            response = bytes(json.dumps({"message": "Key count of shard ID retrieved successfully", "shard-id-key-count": len(kvstore)}), 'utf-8')
             self.wfile.write(response)
 
         # VIEW operations
@@ -161,7 +179,61 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
     def do_PUT(self):
         print("\n[+] recieved PUT request from: " + str(self.client_address[0]) + " to path: " + str(self.path) + "\n")
 
-        if "/broadcast-view-put" in str(self.path): # and any(self.client_address[0] in string for string in views_list):
+        # Shard PUT operations
+        if "/key-value-store-shard/add-member/" in str(self.path):
+            self.data_string = self.rfile.read(int(self.headers['Content-Length']))
+            new_string = self.data_string.decode()
+            new_string = new_string.replace('{', '')
+            new_string = new_string.replace('}', '')
+            new_instance = new_string.split(": ")[1]
+            shardID_str = str(self.path).split("/add-member/",1)[1]
+            print("new instance: ", str(new_instance), "shard: ", shardID_str)
+            for x in views_list:
+                if (x != saddr):
+                    print("http://" + str(x) + "/broadcast-shard-put")
+                    # r = requests.put('http://' + x + "/broadcast-shard-put", timeout=1, allow_redirects=False, headers=self.headers, json={"socket-address" : new_instance, "shard_id": shardID_str})
+                    try:
+                        print("TRY: broadcasting SHARD PUT value to ", x)
+                        r = requests.put('http://' + x + "/broadcast-shard-put", timeout=1, allow_redirects=False, headers=self.headers, json={"socket-address" : new_instance, "shard_id": shardID_str})
+                    except:
+                        print("EXCEPT: broadcasting DELETE view ", x)
+                        views_list.remove(x)
+                        for y in views_list:
+                            print("Broadcasting DELETE downed instance ", x, "to ", y)
+                            if (y != saddr) and (y != x):
+                                try:
+                                    r = requests.delete('http://' + y + "/broadcast-view-delete", timeout=1, allow_redirects=False, headers=self.headers, json={"socket-address" : x})
+                                except:
+                                    print("broadcast instance is down or busy")
+            
+            # append new instance to local shard
+            print("Shard(before)", shards); 
+            if new_instance not in shards[int(shardID_str)]:
+                shards[int(shardID_str)].append(new_instance)
+            print("Shard(after)", shards)
+
+            self._set_headers(response_code=200)
+            response = bytes("", 'utf-8')
+            self.wfile.write(response)
+
+
+        elif "/broadcast-shard-put" in str(self.path):
+            self.data_string = self.rfile.read(int(self.headers['Content-Length']))
+            data = json.loads(self.data_string)
+            shardID_str = data["shard_id"]
+            new_instance = data["socket-address"]
+
+            print("Shard(before)", shards); 
+            if new_instance not in shards[int(shardID_str)]:
+                shards[int(shardID_str)].append(new_instance)
+            print("Shard(after)", shards)
+
+            self._set_headers(response_code=200)
+            response = bytes(json.dumps({'bogus' : "pp"}), 'utf-8')
+            self.wfile.write(response)
+
+        # VIEW operations
+        elif "/broadcast-view-put" in str(self.path): # and any(self.client_address[0] in string for string in views_list):
             self.data_string = self.rfile.read(int(self.headers['Content-Length']))
             data = json.loads(self.data_string)
             new_string = self.data_string.decode()
