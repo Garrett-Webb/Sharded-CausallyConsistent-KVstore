@@ -36,6 +36,37 @@ shards = {}
 shardID = -1
 shardCount = -1
 
+# omega poggers hashing function
+def magicHash(key):
+    print("\nIn the hashing function")
+    print(shards)
+    print("num shards is", len(shards.keys()))
+    hashRet = (hash(object) % len(shards.keys())) + 1
+    print("the hashed index is", hashRet)
+    return hashRet
+
+# function to distribute PUT to other nodes in the same shard
+def distributePUT(keystr, insertShard, vc_str):
+    for replica in views_list:
+        if(replica in list(shards[insertShard])):
+            if (replica != saddr):
+                try:
+                    print("    Broadcasting PUT value ", str(keystr), " to ", str(replica))
+                    r = requests.put('http://' + replica + "/broadcast-key-put/" + keystr, timeout=1, allow_redirects=False, headers=self.headers, json={"value" : data["value"], "causal-metadata":  vc_str})
+                except:
+                    print("    The instance is down, broadcasting delete view to all up instances")
+                    views_list.remove(replica)
+                    for y in views_list:
+                        print("    Broadcasting DELETE downed instance ", replica, "to ", y)
+                        if (y != saddr) and (y != replica):
+                            try:
+                                r = requests.put('http://' + y + "/broadcast-view-delete", timeout=1, allow_redirects=False, headers=self.headers, json={"socket-address" : replica})
+                            except:
+                                print("    instance is also down or busy")
+    return
+
+def distributeGET(keystr, insertShard, vc_str):
+
 class requestHandler(http.server.BaseHTTPRequestHandler):
     def _set_headers(self, response_code):
         self.send_response(response_code)
@@ -207,7 +238,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                                     print("broadcast instance is down or busy")
             
             # append new instance to local shard
-            print("Shard(before)", shards); 
+            print("Shard(before)", shards)
             if new_instance not in shards[int(shardID_str)]:
                 shards[int(shardID_str)].append(new_instance)
             print("Shard(after)", shards)
@@ -364,71 +395,57 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                 vc_str = json.dumps(vc_temp)
 
                 keystr = str(self.path).split("/key-value-store/",1)[1]
-                if(len(keystr) > 0 and len(keystr) < 50):
-                    try:
-                        vc_temp = json.loads(data["causal-metadata"])
-                    except:
-                        vc_temp = ""
-                    print("keyvaluestore vc_temp ")
-                    print(vc_temp)
-                    if "value" not in data:
-                        self._set_headers(response_code=400)
-                        response = bytes(json.dumps({'error' : "Value is missing", 'message' : "Error in PUT", "causal-metadata": vc_str}), 'utf-8')
-                    elif keystr in kvstore:
-                        kvstore[keystr] = data["value"]
-                        # INCREMENT VECTOR CLOCK
-                        vc[saddr] = vc[saddr] + 1
-                        vc_str = json.dumps(vc)
 
-                        # Send key PUT to all other replicas
-                        for replica in views_list:
-                            if (replica != saddr):
-                                try:
-                                    print("    Broadcasting PUT value ", str(keystr), " to ", str(replica))
-                                    r = requests.put('http://' + replica + "/broadcast-key-put/" + keystr, timeout=1, allow_redirects=False, headers=self.headers, json={"value" : data["value"], "causal-metadata":  vc_str})
-                                except:
-                                    print("    The instance is down, broadcasting delete view to all up instances")
-                                    views_list.remove(replica)
-                                    for y in views_list:
-                                        print("    Broadcasting DELETE downed instance ", replica, "to ", y)
-                                        if (y != saddr) and (y != replica):
-                                            try:
-                                                r = requests.put('http://' + y + "/broadcast-view-delete", timeout=1, allow_redirects=False, headers=self.headers, json={"socket-address" : replica})
-                                            except:
-                                                print("    instance is also down or busy")
-                        self._set_headers(response_code=200)
-                        response = bytes(json.dumps({'message' : "Updated successfully", 'replaced' :True, "causal-metadata": vc_str}), 'utf-8')
-                        self.wfile.write(response)
-                        return
-                    else:
-                        kvstore[keystr] = data["value"]
-                        # INCREMENT VECTOR CLOCK
-                        vc[saddr] = vc[saddr] + 1
-                        vc_str = json.dumps(vc)
-                        # Send key PUT to all other replicas
-                        for replica in views_list:
-                            if (replica != saddr):
-                                try:
-                                    print("    Broadcasting PUT value ", str(keystr), " to ", str(replica))
-                                    r = requests.put('http://' + replica + "/broadcast-key-put/" + keystr, timeout=1, allow_redirects=False, headers=self.headers, json={"value" : data["value"], "causal-metadata": vc_str})
-                                except:
-                                    print("    The instance is down, broadcasting delete view to all up instances")
-                                    for y in views_list:
-                                        print("    Broadcasting DELETE downed instance ", replica, "to ", y)
-                                        if (y != saddr) and (y != replica):
-                                            try:
-                                                r = requests.put('http://' + y + "/broadcast-view-delete", timeout=1, allow_redirects=False, headers=self.headers, json={"socket-address" : replica})
-                                            except:
-                                                print("    instance is also down or busy")
-                        self._set_headers(response_code=201)
-                        response = bytes(json.dumps({'message' : "Added successfully", 'replaced' :False, "causal-metadata":vc_str}), 'utf-8')
-                        self.wfile.write(response)
-                        return
-                elif (len(keystr) > 50):
-                    self._set_headers(response_code=400)
-                    response = bytes(json.dumps({'error' : "Key is too long", 'message' : "Error in PUT", "causal-metadata":vc_str}), 'utf-8')
-                
-                self.wfile.write(response)
+                insertShard = magicHash(keystr)
+                # if this key belongs in a different shard
+                if(shardID != insertShard):
+                    # forward request to proper shard
+                    print("foo")
+                # if the key belongs in this shard 
+                else:
+                    # do the PUT on the current node and related shards 
+                    # TODO: distribute PUT to only related shards, not all
+                    if(len(keystr) > 0 and len(keystr) < 50):
+                        try:
+                            vc_temp = json.loads(data["causal-metadata"])
+                        except:
+                            vc_temp = ""
+                        print("keyvaluestore vc_temp ")
+                        print(vc_temp)
+                        if "value" not in data:
+                            self._set_headers(response_code=400)
+                            response = bytes(json.dumps({'error' : "Value is missing", 'message' : "Error in PUT", "causal-metadata": vc_str}), 'utf-8')
+                        elif keystr in kvstore:
+                            kvstore[keystr] = data["value"]
+                            # INCREMENT VECTOR CLOCK
+                            vc[saddr] = vc[saddr] + 1
+                            vc_str = json.dumps(vc)
+
+                            # send PUT req to all other views in the same shard
+                            distributePUT(keystr, insertShard, vc_str)
+                            
+                            self._set_headers(response_code=200)
+                            response = bytes(json.dumps({'message' : "Updated successfully", 'replaced' :True, "causal-metadata": vc_str}), 'utf-8')
+                            self.wfile.write(response)
+                            return
+                        else:
+                            kvstore[keystr] = data["value"]
+                            # INCREMENT VECTOR CLOCK
+                            vc[saddr] = vc[saddr] + 1
+                            vc_str = json.dumps(vc)
+
+                            # send PUT req to all other views in the same shard
+                            distributePUT(keystr, insertShard, vc_str)
+
+                            self._set_headers(response_code=201)
+                            response = bytes(json.dumps({'message' : "Added successfully", 'replaced' :False, "causal-metadata":vc_str}), 'utf-8')
+                            self.wfile.write(response)
+                            return
+                    elif (len(keystr) > 50):
+                        self._set_headers(response_code=400)
+                        response = bytes(json.dumps({'error' : "Key is too long", 'message' : "Error in PUT", "causal-metadata":vc_str}), 'utf-8')
+                    
+                    self.wfile.write(response)
             else:
                 self._set_headers(response_code=500)
         
