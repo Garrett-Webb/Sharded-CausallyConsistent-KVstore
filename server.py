@@ -46,32 +46,39 @@ def magicHash(key):
     return hashRet
 
 # function to distribute PUT to other nodes in the same shard
-def distributePUT(keystr, insertShard, vc_str):
-    for replica in views_list:
-        if(replica in list(shards[insertShard])):
-            if (replica != saddr):
-                try:
-                    print("    Broadcasting PUT value ", str(keystr), " to ", str(replica))
-                    r = requests.put('http://' + replica + "/broadcast-key-put/" + keystr, timeout=1, allow_redirects=False, headers=self.headers, json={"value" : data["value"], "causal-metadata":  vc_str})
-                except:
-                    print("    The instance is down, broadcasting delete view to all up instances")
-                    views_list.remove(replica)
-                    for y in views_list:
-                        print("    Broadcasting DELETE downed instance ", replica, "to ", y)
-                        if (y != saddr) and (y != replica):
-                            try:
-                                r = requests.put('http://' + y + "/broadcast-view-delete", timeout=1, allow_redirects=False, headers=self.headers, json={"socket-address" : replica})
-                            except:
-                                print("    instance is also down or busy")
-    return
 
-def distributeGET(keystr, insertShard, vc_str):
+
+# function to distribute GET to other nodes in the same shard
+def distributeGET(keystr, insertShard, vc_str, data):
+    print("placeholder")
+    return
 
 class requestHandler(http.server.BaseHTTPRequestHandler):
     def _set_headers(self, response_code):
         self.send_response(response_code)
         self.send_header("Content-type", "application/json")
         self.end_headers()
+
+
+    def distributePUT(self, keystr, insertShard, vc_str, data):
+        for replica in views_list:
+            if(replica in list(shards[insertShard])):
+                if (replica != saddr):
+                    try:
+                        print("    Broadcasting PUT value ", str(keystr), " to ", str(replica))
+                        r = requests.put('http://' + replica + "/broadcast-key-put/" + keystr, timeout=1, allow_redirects=False, headers=self.headers, json={"value" : data["value"], "causal-metadata":  vc_str})
+                    except:
+                        print("    The instance is down, broadcasting delete view to all up instances")
+                        views_list.remove(replica)
+                        for y in views_list:
+                            print("    Broadcasting DELETE downed instance ", replica, "to ", y)
+                            if (y != saddr) and (y != replica):
+                                try:
+                                    r = requests.delete('http://' + y + "/broadcast-view-delete", timeout=1, allow_redirects=False, headers=self.headers, json={"socket-address" : replica})
+                                except:
+                                    print("    instance is also down or busy")
+        return
+
 
     def do_GET(self):
         print("\n[+] recieved GET request from: " + str(self.client_address[0]) + " to path: " + str(self.path) + "\n") 
@@ -104,8 +111,8 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
 
         # VIEW operations
         elif "/update-vc-store" in str(self.path): # and any(self.client_address[0] in string for string in views_list):
-            print("vc to send back:")
-            print(vc)
+            #print("vc to send back:")
+            #print(vc)
             self._set_headers(response_code=200)
             response = bytes(json.dumps(vc), 'utf-8')
             self.wfile.write(response)
@@ -211,7 +218,81 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
         print("\n[+] recieved PUT request from: " + str(self.client_address[0]) + " to path: " + str(self.path) + "\n")
 
         # Shard PUT operations
-        if "/key-value-store-shard/add-member/" in str(self.path):
+        if "/key-value-store-shard/reshard" in str(self.path):
+            # reshard the kvstore
+            self.data_string = self.rfile.read(int(self.headers['Content-Length']))
+            data = json.loads(self.data_string)
+            new_shard_count = data["shard-count"]
+            
+            # get all key/values in one place
+            for shardList in shards:
+                if(saddr not in shardList):
+                    r = requests.get('http://'+ replica + "/update-kv-store", timeout=1)
+                    response_json = r.json()
+                    #print(type(response_json))
+                    for key in response_json:
+                        kvstore[key] = response_json[key]
+                
+            # empty shard list
+            for key in shards.key():
+                shards[key] = []
+
+            # Initialize shards list
+            if len(views_list) / int(shardCount) >= 2:
+                print("enough in view to split into shards")
+                #TODO split views into shards and store in shards dict.
+                num_nodes_in_shard = len(views_list) / int(shardCount)
+                num_nodes_so_far = 0
+                shardidx = 1
+
+                #sort nodes into shards
+                for view in views_list:
+                    if (view == saddr): 
+                        print("view" , view, " and saddr ", saddr, "match")
+                        shardID = shardidx
+                        print("shard ID is: ", shardID)
+                    if num_nodes_so_far < num_nodes_in_shard:
+                        shards[shardidx].append(view)
+                        num_nodes_so_far += 1
+                    else:
+                        shardidx += 1
+                        num_nodes_so_far = 0
+                        shards[shardidx].append(view)
+                    
+                # if uneven # of nodes, add an extra node to the last shard
+                if( (len(views_list) % int(shardCount)) == 1):
+                    shards[shardidx-1].append(views_list[-1])
+                print(shards)
+            else:
+                print("not enough nodes to have redundancy in shards. exiting program now")
+                #TODO error 404
+
+            # Replace key/values for all servers
+            for shardKey in shards.keys():
+                kvstore_temp = {}
+                for key in kvstore.keys():
+                    if(magicHash(key) == shardKey):
+                        #add key to kvstore_temp if it matches the hash
+                        kvstore_temp[key] = kvstore[key]
+                for(updateShard in shards[shardKey]):
+                    requests.put('http://'+ updateShard + "/broadcast-reshard-kvstore-put", timeout=1, json=kvstore_temp))
+                # broadcast replace kvstore with kvstore_temp to all nodes in shardkey
+
+
+        elif "/broadcast-reshard-kvstore-put" in str(self.path):
+            vc = {}
+            self.data_string = self.rfile.read(int(self.headers['Content-Length']))
+            data = json.loads(self.data_string)
+            print("the new kvstore is", data)
+            kvstore = data
+
+            self._set_headers(response_code=200)
+            response = bytes(json.dumps("message": "hehe"), 'utf-8')
+            self.wfile.write(response)
+                        
+
+
+        elif "/key-value-store-shard/add-member/" in str(self.path):
             self.data_string = self.rfile.read(int(self.headers['Content-Length']))
             new_string = self.data_string.decode()
             new_string = new_string.replace('{', '')
@@ -246,7 +327,6 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
             self._set_headers(response_code=200)
             response = bytes("", 'utf-8')
             self.wfile.write(response)
-
 
         elif "/broadcast-shard-put" in str(self.path):
             self.data_string = self.rfile.read(int(self.headers['Content-Length']))
@@ -361,6 +441,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
         else:
             if "/key-value-store/" in str(self.path):
                 self.data_string = self.rfile.read(int(self.headers['Content-Length']))
+                print(self.data_string)
                 data = json.loads(self.data_string)
                 try:
                     vc_temp = json.loads(data["causal-metadata"])
@@ -372,26 +453,27 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                     if vc_temp[x] > vc[x]:
                         print("element is bigger kekw")
                         for replica in views_list:
-                            if replica != saddr:
-                                try:
-                                    r = requests.get('http://'+ replica + "/update-kv-store", timeout=1)
-                                    response_json = r.json()
-                                    print(type(response_json))
-                                    for key in response_json:
-                                        kvstore[key] = response_json[key]
+                            if(replica in list(shards[insertShard])):
+                                if replica != saddr:
+                                    try:
+                                        r = requests.get('http://'+ replica + "/update-kv-store", timeout=1)
+                                        response_json = r.json()
+                                        print(type(response_json))
+                                        for key in response_json:
+                                            kvstore[key] = response_json[key]
 
-                                    r = requests.get('http://'+ replica + "/update-vc-store", timeout=1)
-                                    response_json = r.json()
-                                    print(type(response_json))
-                                    for key in response_json:
-                                        vc[key] = max(vc[key],response_json[key])
-                                except:
-                                    print("we have failed")
-                                try:
-                                    r = requests.put('http://' + replica + "/broadcast-view-put", timeout=1, allow_redirects=False, json={"socket-address" : saddr})
-                                except:
-                                    print("replica ", replica, " in view is not yet live.")
-                                break
+                                        r = requests.get('http://'+ replica + "/update-vc-store", timeout=1)
+                                        response_json = r.json()
+                                        print(type(response_json))
+                                        for key in response_json:
+                                            vc[key] = max(vc[key],response_json[key])
+                                    except:
+                                        print("we have failed")
+                                    try:
+                                        r = requests.put('http://' + replica + "/broadcast-view-put", timeout=1, allow_redirects=False, json={"socket-address" : saddr})
+                                    except:
+                                        print("replica ", replica, " in view is not yet live.")
+                                    break
                 vc_str = json.dumps(vc_temp)
 
                 keystr = str(self.path).split("/key-value-store/",1)[1]
@@ -422,7 +504,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                             vc_str = json.dumps(vc)
 
                             # send PUT req to all other views in the same shard
-                            distributePUT(keystr, insertShard, vc_str)
+                            self.distributePUT(keystr, insertShard, vc_str, data)
                             
                             self._set_headers(response_code=200)
                             response = bytes(json.dumps({'message' : "Updated successfully", 'replaced' :True, "causal-metadata": vc_str}), 'utf-8')
@@ -435,7 +517,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                             vc_str = json.dumps(vc)
 
                             # send PUT req to all other views in the same shard
-                            distributePUT(keystr, insertShard, vc_str)
+                            self.distributePUT(keystr, insertShard, vc_str, data)
 
                             self._set_headers(response_code=201)
                             response = bytes(json.dumps({'message' : "Added successfully", 'replaced' :False, "causal-metadata":vc_str}), 'utf-8')
@@ -619,6 +701,8 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
             self._set_headers(response_code=500)
         
         return
+
+    
 
 def run(server_class=http.server.HTTPServer, handler_class=requestHandler, addr='0.0.0.0', port=8085):
     # this function initializes and runs the server on the class defined above
