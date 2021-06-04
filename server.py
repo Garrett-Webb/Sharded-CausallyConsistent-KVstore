@@ -81,6 +81,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
         print("placeholder")
         return
 
+    # if the server recieves a GET request, it is directed here
     def do_GET(self):
         print("\n[+] recieved GET request from: " + str(self.client_address[0]) + " to path: " + str(self.path) + "\n") 
 
@@ -306,6 +307,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
 
         return
 
+    # if the server recieves a PUT request, it is directed here
     def do_PUT(self):
         print("\n[+] recieved PUT request from: " + str(self.client_address[0]) + " to path: " + str(self.path) + "\n")
 
@@ -658,6 +660,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
         
         return
     
+    # if the server recieves a DELETE request, it is directed here
     def do_DELETE(self):
         print("\n[+] recieved DELETE request from: " + str(self.client_address[0]) + " to path: " + str(self.path) + "\n")
         view_list_str = []
@@ -838,14 +841,14 @@ def run(server_class=http.server.HTTPServer, handler_class=requestHandler, addr=
     httpd = server_class(server_address, handler_class)
 
     for replica in views_list:
-        if replica != saddr:
+        if (replica != saddr):
             try:
                 r = requests.put('http://' + replica + "/broadcast-view-put", timeout=.5, allow_redirects=False, json={"socket-address" : saddr})
             except:
                 print("replica ", replica, " in view is not yet live.")
     
     for replica in views_list:
-        if replica != saddr:
+        if (replica != saddr) and (replica in list(shards[shardID])):
             print("requesting http://" + replica + "/update-kv-store")
             try:
                 r = requests.get('http://'+ replica + "/update-kv-store", timeout=.5)
@@ -857,9 +860,9 @@ def run(server_class=http.server.HTTPServer, handler_class=requestHandler, addr=
             except:
                 print("replica is not up yet")
 
-    for view in views_list:
-        vc[view] = 0
-        if replica != saddr:
+    for replica in views_list:
+        vc[replica] = 0
+        if (replica != saddr) and (replica in list(shards[shardID])):
             print("requesting http://" + replica + "/update-vc-store")
             try:
                 r = requests.get('http://'+ replica + "/update-vc-store", timeout=.5)
@@ -870,7 +873,7 @@ def run(server_class=http.server.HTTPServer, handler_class=requestHandler, addr=
                 break
             except:
                 print("replica is not up yet")
-        print("Vector clock of ", view, " is ", vc[view])
+        print("Vector clock of ", replica, " is ", vc[replica])
 
     print(f"Starting HTTP server on {addr}:{port}")
     try:
