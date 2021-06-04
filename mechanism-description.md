@@ -6,6 +6,16 @@ the description of the mechanisms implemented for causal dependency tracking and
 * `Kai Hsieh` : cruzid: `kahsieh`
 * `Rahul Arora` : cruzid: `raarora`
 
+## Sharding Mechanism
+* We attempt to divide views evenly into shards. If there is an odd number of shards, we will add an extra view to the
+last shard.
+* We store lists of shards in a python dictionary, using a "shard ID" as a key, and a list of corresponding views as 
+the value. We have a local variable in each server instance to record which shard each view is a part of
+* Shard IDs are integers, starting from 1 and going to the number of shards (inclusive)
+
+
+
+#### BELOW THIS IS FROM ASSIGNMENT 3
 ## Causal Consistency Mechanism
 * We made the graph below as a guide for how to implement the causal consistency portion of this project.
 * ![graph](images/mechanism_graph.png)
