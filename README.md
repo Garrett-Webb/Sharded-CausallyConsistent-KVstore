@@ -22,14 +22,15 @@ follow for our own server
 
 
 ## Team Contributions:
-* `all together:` 
+* `all together:` We worked on the entire project together over a call with Visual Studio Code Live Share enabled. This allowed us to all look at and modify the same files. This included group debugging and talking over the ideas and implementation as a group. We alternated the roles of who would code while the others watched and helped. All work described below was done by the individual with the team supporting.
 
-* `Garrett:` 
 
-* `Rahul:`  
+* `Garrett:` Worked together with group. With the help of my groupmates, I added the helper endpoints for the sharding operations, helper endpoints, and modified the keyvalue store functionality to operate in a sharded manner. Also helped with the documentation and creation of resharding mechanism.
 
-* `Kai:` 
+* `Rahul:` Worked together with group. Created the Hashing and functionality for distribution of key values evenly among the shards. Helped with the creation of the resharding mechanism
+
+* `Kai:` Worked together with group. Testing mastermind.
 
 
 ## Acknowledgements:
-* `Vinay Venkat (tutor):` Provided us with a basic overview of a potential way to use vector clocks within our environment during his tutoring session.
+* `Vinay Venkat (tutor):`  Provided us with a basic overview of a potential way to use vector clocks within our environment during his tutoring session.
