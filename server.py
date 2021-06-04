@@ -45,21 +45,18 @@ def magicHash(key):
     print("the hashed index is", hashRet)
     return hashRet
 
-# function to distribute PUT to other nodes in the same shard
-
-
-# function to distribute GET to other nodes in the same shard
-def distributeGET(keystr, insertShard, vc_str, data):
-    print("placeholder")
-    return
-
 class requestHandler(http.server.BaseHTTPRequestHandler):
     def _set_headers(self, response_code):
         self.send_response(response_code)
         self.send_header("Content-type", "application/json")
         self.end_headers()
 
+    # function to distribute GET to other nodes in the same shard
+    def distributeGET(self, keystr, insertShard, vc_str, data):
+        print("placeholder")
+        return
 
+    # function to distribute PUT to other nodes in the same shard
     def distributePUT(self, keystr, insertShard, vc_str, data):
         for replica in views_list:
             if(replica in list(shards[insertShard])):
@@ -79,6 +76,10 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                                     print("    instance is also down or busy")
         return
 
+    # function to distribute DELETE to other nodes in the same shard
+    def distributeDELETE(self, keystr, insertShard, vc_str, data):
+        print("placeholder")
+        return
 
     def do_GET(self):
         print("\n[+] recieved GET request from: " + str(self.client_address[0]) + " to path: " + str(self.path) + "\n") 
@@ -205,54 +206,99 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
 
             #TODO hash incoming thing and broadcast GET to correct shard
 
-            try:
-                vc_temp = json.loads(data["causal-metadata"])
-            except:
-                vc_temp = ""
-            for x in vc_temp:
-                print("vc_temp[",x ,"] is ", str(vc_temp[x]))
-                print("VC[",x,"] ", " is ", str(vc[x]))
-                if vc_temp[x] > vc[x]:
-                    print("element is bigger kekw")
-                    for replica in views_list:
-                        if replica != saddr:
-                            try:
-                                r = requests.get('http://'+ replica + "/update-kv-store", timeout=1)
-                                response_json = r.json()
-                                print(type(response_json))
-                                for key in response_json:
-                                    kvstore[key] = response_json[key]
 
-                                r = requests.get('http://'+ replica + "/update-vc-store", timeout=1)
-                                response_json = r.json()
-                                print(type(response_json))
-                                for key in response_json:
-                                    vc[key] = max(vc[key],response_json[key])
-                            except:
-                                print("we have failed")
-                            try:
-                                r = requests.put('http://' + replica + "/broadcast-view-put", timeout=1, allow_redirects=False, json={"socket-address" : saddr})
-                            except:
-                                print("replica ", replica, " in view is not yet live.")
-                            break
-            
-            print("BROADCAST GET causal metadata")
-            print(vc)
+            ###########################################################################################################
             keystr = str(self.path).split("/key-value-store/",1)[1]
-            if(len(keystr) > 0 and len(keystr) < 50):
-                if keystr in kvstore:
-                    self._set_headers(response_code=200)
-                    response = bytes(json.dumps({"doesExist" : True, "message" : "Retrieved successfully", "value" : kvstore[keystr], "causal-metadata":vc_str}), 'utf-8')
-                else:
-                    self._set_headers(response_code=404)
-                    response = bytes(json.dumps({"doesExist" : False, "error" : "Key does not exist", "message" : "Error in GET", "causal-metadata":vc_str}), 'utf-8')
-            elif (len(keystr) > 50):
-                self._set_headers(response_code=400)
-                response = bytes(json.dumps({'error' : "Key is too long", 'message' : "Error in GET", "causal-metadata":vc_str}), 'utf-8')
-            elif(len(keystr) == 0):
-                self._set_headers(response_code=400)
-                response = bytes(json.dumps({'error' : "Key not specified", 'message' : "Error in GET", "causal-metadata":vc_str}), 'utf-8')
-            self.wfile.write(response)
+
+            insertShard = magicHash(keystr)
+            # if this key belongs in a different shard
+            if(shardID != insertShard):
+                print("This shard does not have this key. forwarding to a node in the correct shard")
+                # grab last server in shard insertShard
+                
+                # forward request to proper shard
+                inserted = False
+                index = 0
+                while( (inserted == False) and (index < len(shards[insertShard])) ):
+                    node = (shards[insertShard])[index]
+                    try:
+                        print("    Trying: broadcast the GET to the correct shard at ", node)
+                        r = requests.get('http://' + node + "/key-value-store/" + keystr, timeout=5, allow_redirects=True, json=data)
+                        inserted = True
+                        #forward response from other node to client
+                        self._set_headers(r.status_code)
+                        self.wfile.write(r.content)
+
+                    except Exception as e: 
+                        print("Exception was: ")
+                        print(e)
+                        x = node
+                        print("    EXCEPT: broadcasting DELETE view ", x)
+                        views_list.remove(x)
+                        for y in views_list:
+                            print("    Broadcasting DELETE downed instance ", x, "to ", y)
+                            if (y != saddr) and (y != x):
+                                try:
+                                    r = requests.delete('http://' + y + "/broadcast-view-delete", timeout=1, allow_redirects=False, headers=self.headers, json={"socket-address" : x})
+                                except:
+                                    print("    broadcast instance is down or busy")
+                    index += 1
+                #Failed insert
+                if(inserted == False):
+                    self._set_headers(response_code=500)
+                    response = bytes(json.dumps({'error' : "Shard containing key is down", 'message' : "Error in PUT", "causal-metadata":vc_str}), 'utf-8')
+                    self.wfile.write(response)
+
+            # if the key belongs in THIS shard
+            else:
+                try:
+                    vc_temp = json.loads(data["causal-metadata"])
+                except:
+                    vc_temp = ""
+                for x in vc_temp:
+                    #print("vc_temp[",x ,"] is ", str(vc_temp[x]))
+                    #print("VC[",x,"] ", " is ", str(vc[x]))
+                    if vc_temp[x] > vc[x]:
+                        #print("element is bigger kekw")
+                        for replica in views_list:
+                            if (replica != saddr) and (replica in list(shards[insertShard])):
+                                try:
+                                    r = requests.get('http://'+ replica + "/update-kv-store", timeout=1)
+                                    response_json = r.json()
+                                    print(type(response_json))
+                                    for key in response_json:
+                                        kvstore[key] = response_json[key]
+
+                                    r = requests.get('http://'+ replica + "/update-vc-store", timeout=1)
+                                    response_json = r.json()
+                                    print(type(response_json))
+                                    for key in response_json:
+                                        vc[key] = max(vc[key],response_json[key])
+                                except:
+                                    print("we have failed")
+                                try:
+                                    r = requests.put('http://' + replica + "/broadcast-view-put", timeout=1, allow_redirects=False, json={"socket-address" : saddr})
+                                except:
+                                    print("replica ", replica, " in view is not yet live.")
+                                break
+                
+                #print("BROADCAST GET causal metadata")
+                #print(vc)
+                keystr = str(self.path).split("/key-value-store/",1)[1]
+                if(len(keystr) > 0 and len(keystr) < 50):
+                    if keystr in kvstore:
+                        self._set_headers(response_code=200)
+                        response = bytes(json.dumps({"doesExist" : True, "message" : "Retrieved successfully", "value" : kvstore[keystr], "causal-metadata":vc_str}), 'utf-8')
+                    else:
+                        self._set_headers(response_code=404)
+                        response = bytes(json.dumps({"doesExist" : False, "error" : "Key does not exist", "message" : "Error in GET", "causal-metadata":vc_str}), 'utf-8')
+                elif (len(keystr) > 50):
+                    self._set_headers(response_code=400)
+                    response = bytes(json.dumps({'error' : "Key is too long", 'message' : "Error in GET", "causal-metadata":vc_str}), 'utf-8')
+                elif(len(keystr) == 0):
+                    self._set_headers(response_code=400)
+                    response = bytes(json.dumps({'error' : "Key not specified", 'message' : "Error in GET", "causal-metadata":vc_str}), 'utf-8')
+                self.wfile.write(response)
         
         else:
             #default 500 code to clean up loose ends
@@ -337,7 +383,6 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
             self._set_headers(response_code=200)
             response = bytes(json.dumps({"message": "hehe"}), 'utf-8')
             self.wfile.write(response)
-
 
         elif "/key-value-store-shard/add-member/" in str(self.path):
             self.data_string = self.rfile.read(int(self.headers['Content-Length']))
@@ -904,6 +949,3 @@ if __name__ == '__main__':
         run(port=int(argv[1]))
     else:
         run()
-
-
-        
