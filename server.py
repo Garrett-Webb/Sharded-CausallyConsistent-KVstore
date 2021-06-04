@@ -163,10 +163,13 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
 
         # VIEW operations
         elif "/update-vc-store" in str(self.path): # and any(self.client_address[0] in string for string in views_list):
-            #print("vc to send back:")
-            #print(vc)
             self._set_headers(response_code=200)
             response = bytes(json.dumps(vc), 'utf-8')
+            self.wfile.write(response)
+        
+        elif "/update-shard-dict" in str(self.path): # and any(self.client_address[0] in string for string in views_list):
+            self._set_headers(response_code=200)
+            response = bytes(json.dumps(shards), 'utf-8')
             self.wfile.write(response)
 
         elif "/checkview/" in str(self.path): # and any(self.client_address[0] in string for string in views_list):
@@ -440,31 +443,49 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
             data = json.loads(self.data_string)
             shardID_str = data["shard_id"]
             new_instance = data["socket-address"]
-            if new_instance == saddr:
+            try:
+                new_instance = new_instance.strip()
+                new_instance = new_instance.replace('{', '')
+                new_instance = new_instance.replace('}', '')
+                new_instance = new_instance.replace('"', '')
+                new_instance = new_instance.replace(' ', '')
+            except:
+                print("error in stripping")
+            
+            print("new_instance:", str(new_instance))
+            print("saddr:       ", str(saddr))
+            if (str(new_instance) == str(saddr)):
                 global shardID
                 shardID = int(shardID_str)
                 print("shardID updated, update kv and vc from others in the shard.")
+                print("Shards (BEFORE) is", shards)
                 #######################################################################################
                 # GET SHARDS
+                print(type(self.client_address))
+                print(str(self.client_address[0]) + ":8085")
                 for replica in views_list:
-                    if (replica != saddr):
+                    if (replica != saddr) and (replica != (str(self.client_address[0]) + ":8085")):
                         print("requesting http://" + replica + "/update-shard-dict")
                         try:
-                            r = requests.get('http://'+ replica + "/update-shard-dict", timeout=.5)
+                            temp = "http://"+ str(replica) + "/update-shard-dict"
+                            r = requests.get(temp, timeout=1)
                             response_json = r.json()
                             print(type(response_json))
                             for key in response_json:
-                                shards[key] = response_json[key]
+                                shards[int(key)] = response_json[key]
                             break
-                        except:
+                        except Exception as e: 
+                            print("Exception was: ")
+                            print(e)
                             print("replica is not up yet")
                     
+                print("Shards (AFTER) is", shards)
                 # GET the kvstore and vc from other nodes in the shard.
                 for replica in views_list:
-                    if (replica != saddr) and (replica in list(shards[shardID])):
+                    if ( (replica != saddr) and (replica in shards[shardID]) and (replica != (str(self.client_address[0]) + ":8085")) ):
                         print("requesting http://" + replica + "/update-kv-store")
                         try:
-                            r = requests.get('http://'+ replica + "/update-kv-store", timeout=.5)
+                            r = requests.get('http://'+ replica + "/update-kv-store", timeout=1)
                             response_json = r.json()
                             print(type(response_json))
                             for key in response_json:
@@ -475,7 +496,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
 
                 for replica in views_list:
                     vc[replica] = 0
-                    if (replica != saddr) and (replica in list(shards[shardID])):
+                    if ( (replica != saddr) and (replica in shards[shardID]) and (replica != (str(self.client_address[0]) + ":8085")) ):
                         print("requesting http://" + replica + "/update-vc-store")
                         try:
                             r = requests.get('http://'+ replica + "/update-vc-store", timeout=.5)
@@ -489,7 +510,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                 #######################################################################################
 
             print("Shard(before)", shards); 
-            if new_instance not in shards[int(shardID_str)]:
+            if (new_instance not in shards[int(shardID_str)]) and (shardID != -1):
                 shards[int(shardID_str)].append(new_instance)
             print("Shard(after)", shards)
 
@@ -960,7 +981,7 @@ def run(server_class=http.server.HTTPServer, handler_class=requestHandler, addr=
     for replica in views_list:
         if (replica != saddr):
             try:
-                r = requests.put('http://' + replica + "/broadcast-view-put", timeout=1, allow_redirects=False, json={"socket-address" : saddr})
+                r = requests.put('http://' + replica + "/broadcast-view-put", timeout=.5, allow_redirects=False, json={"socket-address" : saddr})
             except:
                 print("replica ", replica, " in view is not yet live.")
     if(shardID != -1):
