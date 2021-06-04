@@ -20,7 +20,7 @@ last shard.
 * 
 
 
-#### BELOW THIS IS FROM ASSIGNMENT 3
+# BELOW THIS IS FROM ASSIGNMENT 3
 ## Causal Consistency Mechanism
 * We made the graph below as a guide for how to implement the causal consistency portion of this project.
 * ![graph](images/mechanism_graph.png)
