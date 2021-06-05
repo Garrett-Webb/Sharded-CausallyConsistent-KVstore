@@ -9,13 +9,18 @@ the description of the mechanisms implemented for causal dependency tracking and
 ## Sharding Mechanism
 * We attempt to divide views evenly into shards. If there is an odd number of shards, we will add an extra view to the
 last shard.
-* We store lists of shards in a python dictionary, using a "shard ID" as a key, and a list of corresponding views as 
-the value. We have a local variable in each server instance to record which shard each view is a part of
+* In order to do this, we first check the number of noodes in the view divided by the specified shard count. if there are enough nodes to split into shards such that there are at least 2 nodes in each shard, then we proceed to split them up. 
+* we split them up by iterating through the list of nodes in the view `n` times where `n` is the number of nodes in the view. every `floor(shardcount / 2)` iterations, we increment the shardID that we are assigning the views to and zero out our number of nodes in the shard so far. Because we use the `floor` division, this will always divide evenly an even number of nodes, and if there is an odd number, the last node will get added to the last shard, as an extra.
+* if the shard count was not specified, then we simply dont worry about the shard hashmap until later, when the PUT request endpoint for `/add-member` is called. it is at this time when the node gets the updated shard hashmap, keyvaluestore, and vectorclock from the other members of the same shard.
+* if the command to start the server specifies a number of shards that is incompatible with the number of elements in the view, i.e. there is not at least 2 nodes per 1 shard, the program will display an error to the user and exit without booting the server. This same logic will result in a 404 error if sent to the `/reshard` endpoint
+* We store lists of shards in a python dictionary, using a "shard ID" as a key, and a list of corresponding views as the value. We have a local variable in each server instance to record which shard each view is a part of
 * Shard IDs are integers, starting from 1 and going to the number of shards (inclusive)
 
+## Sharding Mechanism
+* 
 
 
-#### BELOW THIS IS FROM ASSIGNMENT 3
+# BELOW THIS IS FROM ASSIGNMENT 3
 ## Causal Consistency Mechanism
 * We made the graph below as a guide for how to implement the causal consistency portion of this project.
 * ![graph](images/mechanism_graph.png)
