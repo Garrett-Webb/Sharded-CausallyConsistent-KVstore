@@ -7,8 +7,7 @@ the description of the mechanisms implemented for causal dependency tracking and
 * `Rahul Arora` : cruzid: `raarora`
 
 ## Sharding Mechanism
-* We attempt to divide views evenly into shards. If there is an odd number of shards, we will add an extra view to the
-last shard.
+* We attempt to divide views evenly into shards. If there is an odd number of shards, we will add an extra view to the last shard.
 * In order to do this, we first check the number of noodes in the view divided by the specified shard count. if there are enough nodes to split into shards such that there are at least 2 nodes in each shard, then we proceed to split them up. 
 * we split them up by iterating through the list of nodes in the view `n` times where `n` is the number of nodes in the view. every `floor(shardcount / 2)` iterations, we increment the shardID that we are assigning the views to and zero out our number of nodes in the shard so far. Because we use the `floor` division, this will always divide evenly an even number of nodes, and if there is an odd number, the last node will get added to the last shard, as an extra.
 * if the shard count was not specified, then we simply dont worry about the shard hashmap until later, when the PUT request endpoint for `/add-member` is called. it is at this time when the node gets the updated shard hashmap, keyvaluestore, and vectorclock from the other members of the same shard.
@@ -16,11 +15,19 @@ last shard.
 * We store lists of shards in a python dictionary, using a "shard ID" as a key, and a list of corresponding views as the value. We have a local variable in each server instance to record which shard each view is a part of
 * Shard IDs are integers, starting from 1 and going to the number of shards (inclusive)
 
-## Sharding Mechanism
-* 
+## Resharding Mechanism
+* Upon reaching the reshard endpoint, we first confirm that we have enough replicas to reshard to the requested number of shards.
+* We collect all keys and values from the key/value stores of each replica into the replica upon which the request was called.
+* Using the new shard amount, we locally determine which shard each replica should not belong in.
+* Using the new shard values, we redistribute each key/value into the shard it should now belong in using our magicHash function, and broadcast these newly organized key/value stores to each shard. The new key/value stores will override the existing ones upon the replicas receiving the broadcast.
+* The `/broadcast-reshard-shards-put` endpoint is a helper endpoint that accepts the shards dictionary from the node that sends it, and updates the shards dictionary on the recieving node.
+* The `/broadcast-reshard-kvstore-put` endpoint is a helper endpoint that accepts the kvstore dictionary from the node that sends it, and updates the shards dictionary on the recieving node. The kvstore dictionary that is sent will only contain the key values that should be on the shard via the hashing function.
 
+## Consistent Hashing Mechanism
+* Our hash function, magicHash, takes the sum of a bytearray of the utf-8 encoding of the given key. We then take the modulo of this value with the number of shards we have, to get a value between 0 and (numShards-1). We then add 1 to this number, as our shardIDs begin at 1, rather than 0
+* This hashing function is consistent accross all nodes because instead of using a built-in hashing function that uses a random seed for each separate program, the sum of the bytearray is a consistent number that will yield the same result no matter which node does the calculating.
 
-# BELOW THIS IS FROM ASSIGNMENT 3
+# Legacy from Assignment 3
 ## Causal Consistency Mechanism
 * We made the graph below as a guide for how to implement the causal consistency portion of this project.
 * ![graph](images/mechanism_graph.png)

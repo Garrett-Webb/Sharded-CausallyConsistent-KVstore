@@ -21,6 +21,8 @@ follow for our own server
 * Used to identify if a view operation is coming from an IP that belongs to a replica instead of a client.
 * `https://www.w3schools.com/python/python_variables_global.asp`
 * Used to learn how to modify global variables in python.
+* `https://levelup.gitconnected.com/consistent-hashing-27636286a8a9`
+* Used to determine how to have a consistent hashing function across multiple instances, as python's hash function uses a random seed for each server instance
 
 
 ## Team Contributions:
@@ -28,9 +30,9 @@ follow for our own server
 
 * `Garrett:` Developed majority of helper endpoints. With the help of my groupmates, I added the helper endpoints for the sharding operations, helper endpoints, and modified the keyvalue store functionality to operate in a sharded manner. Also helped with the documentation and creation of resharding mechanism.
 
-* `Rahul:` Derived logic for reshard. Determined what data structures to use for storing shards and shard information. Developed VC logic. Coded alongside Garrett and Kai using VSCode Live Share
+* `Rahul:` Derived logic for reshard. Determined what data structures to use for storing shards and shard information. Developed vector clock logic. Coded alongside Garrett and Kai using VSCode Live Share. 
 
-* `Kai:` Setup the testing/debugging routine and performed most of the testings. Started the initial key-value-store-view operation which built the base structure for rest of the request handling.
+* `Kai:` Setup the testing/debugging routine and performed all of the testings. Started the initial key-value-store-view operation which built the base structure for rest of the request handling.
 
 
 ## Acknowledgements:
