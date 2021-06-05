@@ -46,11 +46,11 @@ shardCount = -1
 #     return hashRet
 
 # omega poggers hashing function
-def magicHash(key):
+def magicHash(key, numshards):
     print("key is ", key)
-    print("hashed shard is ", ((sum(bytearray(key.encode('utf-8'))) % len(shards.keys()))+1))
+    print("hashed shard is ", ((sum(bytearray(key.encode('utf-8'))) % numshards)+1) )
     print("This shard's ID is ", shardID)
-    return int((sum(bytearray(key.encode('utf-8'))) % len(shards.keys()))+1)
+    return int((sum(bytearray(key.encode('utf-8'))) % numshards)+1)
 
 class requestHandler(http.server.BaseHTTPRequestHandler):
     def _set_headers(self, response_code):
@@ -90,6 +90,8 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
 
     # if the server recieves a GET request, it is directed here
     def do_GET(self):
+        global shardID
+        global shardCount
         print("\n[+] recieved GET request from: " + str(self.client_address[0]) + " to path: " + str(self.path) + "\n") 
 
         # Shard GET operations
@@ -224,7 +226,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
             ###########################################################################################################
             keystr = str(self.path).split("/key-value-store/",1)[1]
 
-            insertShard = magicHash(keystr)
+            insertShard = magicHash(keystr, shardCount)
             # if this key belongs in a different shard
             if(shardID != insertShard):
                 print("This shard does not have this key. forwarding to a node in the correct shard")
@@ -237,7 +239,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                     node = (shards[insertShard])[index]
                     try:
                         print("    Trying: broadcast the GET to the correct shard at ", node)
-                        r = requests.get('http://' + node + "/key-value-store/" + keystr, timeout=5, allow_redirects=True, json=data)
+                        r = requests.get('http://' + node + "/key-value-store/" + keystr, timeout=1, allow_redirects=True, json=data)
                         inserted = True
                         #forward response from other node to client
                         self._set_headers(r.status_code)
@@ -269,36 +271,37 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                     vc_temp = json.loads(data["causal-metadata"])
                 except:
                     vc_temp = ""
-                for x in vc_temp:
-                    #print("vc_temp[",x ,"] is ", str(vc_temp[x]))
-                    #print("VC[",x,"] ", " is ", str(vc[x]))
-                    if vc_temp[x] > vc[x]:
-                        #print("element is bigger kekw")
-                        for replica in views_list:
-                            if (replica != saddr) and (replica in list(shards[insertShard])):
-                                try:
-                                    r = requests.get('http://'+ replica + "/update-kv-store", timeout=1)
-                                    response_json = r.json()
-                                    print(type(response_json))
-                                    for key in response_json:
-                                        kvstore[key] = response_json[key]
+                if vc_temp != "":
+                    for x in vc_temp:
+                        #print("vc_temp[",x ,"] is ", str(vc_temp[x]))
+                        #print("VC[",x,"] ", " is ", str(vc[x]))
+                            if vc_temp[str(x)] > vc[str(x)]:
+                                #print("element is bigger kekw")
+                                for replica in views_list:
+                                    if (replica != saddr) and (replica in list(shards[insertShard])):
+                                        try:
+                                            r = requests.get('http://'+ replica + "/update-kv-store", timeout=1)
+                                            response_json = r.json()
+                                            print(type(response_json))
+                                            for key in response_json:
+                                                kvstore[key] = response_json[key]
 
-                                    r = requests.get('http://'+ replica + "/update-vc-store", timeout=1)
-                                    response_json = r.json()
-                                    print(type(response_json))
-                                    for key in response_json:
-                                        vc[key] = max(vc[key],response_json[key])
-                                except:
-                                    print("we have failed")
-                                try:
-                                    r = requests.put('http://' + replica + "/broadcast-view-put", timeout=1, allow_redirects=False, json={"socket-address" : saddr})
-                                except:
-                                    print("replica ", replica, " in view is not yet live.")
-                                break
-                
+                                            r = requests.get('http://'+ replica + "/update-vc-store", timeout=1)
+                                            response_json = r.json()
+                                            print(type(response_json))
+                                            for key in response_json:
+                                                vc[str(key)] = max(vc[str(key)],response_json[key])
+                                        except:
+                                            print("we have failed")
+                                        try:
+                                            r = requests.put('http://' + replica + "/broadcast-view-put", timeout=1, allow_redirects=False, json={"socket-address" : saddr})
+                                        except:
+                                            print("replica ", replica, " in view is not yet live.")
+                                        break
+                    
                 #print("BROADCAST GET causal metadata")
                 #print(vc)
-                keystr = str(self.path).split("/key-value-store/",1)[1]
+                # keystr = str(self.path).split("/key-value-store/",1)[1]
                 if(len(keystr) > 0 and len(keystr) < 50):
                     if keystr in kvstore:
                         self._set_headers(response_code=200)
@@ -322,71 +325,139 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
 
     # if the server recieves a PUT request, it is directed here
     def do_PUT(self):
+        global shardID
+        global shardCount
         print("\n[+] recieved PUT request from: " + str(self.client_address[0]) + " to path: " + str(self.path) + "\n")
 
         # Shard PUT operations
-        # if "/key-value-store-shard/reshard" in str(self.path):
-        #     return
-        #     # reshard the kvstore
-        #     self.data_string = self.rfile.read(int(self.headers['Content-Length']))
-        #     data = json.loads(self.data_string)
-        #     new_shard_count = data["shard-count"]
+        if "/key-value-store-shard/reshard" in str(self.path):
+            # reshard the kvstore
+            try:
+                self.data_string = self.rfile.read(int(self.headers['Content-Length']))
+                data = json.loads(self.data_string)
+                new_shard_count = int(data["shard-count"])
+            except Exception as e:
+                print("exception was: ", e)
+                new_shard_count = -1
+
+            print("The shard count is", new_shard_count)
             
-        #     # get all key/values in one place
-        #     for shardList in shards:
-        #         if(saddr not in shardList):
-        #             r = requests.get('http://'+ replica + "/update-kv-store", timeout=1)
-        #             response_json = r.json()
-        #             #print(type(response_json))
-        #             for key in response_json:
-        #                 kvstore[key] = response_json[key]
+            if len(views_list) / int(new_shard_count) >= 2:
+                # get all key/values in one place
+                print("Kvstore (before)", kvstore)
+                for shardKey in shards.keys():
+                    shardList = shards[shardKey]
+                    if(saddr not in shardList):
+                        for replica in shardList:
+
+                            r = requests.get('http://'+ replica + "/update-kv-store", timeout=1)
+                            response_json = r.json()
+                            #print(type(response_json))
+                            for key in response_json:
+                                kvstore[key] = response_json[key]
+
+                print("Kvstore (after)", kvstore)
                 
-        #     # empty shard list
-        #     for key in shards.key():
-        #         shards[key] = []
+                ########################################################################
+                
+                ########################################################################
 
-        #     # Initialize shards list
-        #     if len(views_list) / int(shardCount) >= 2:
-        #         print("enough in view to split into shards")
-        #         #TODO split views into shards and store in shards dict.
-        #         num_nodes_in_shard = len(views_list) / int(shardCount)
-        #         num_nodes_so_far = 0
-        #         shardidx = 1
+                # empty shard list
+                print("Emptying shard list")
+                
+                for key in range( 1, (max(len(shards.keys()), new_shard_count)+1) ):
+                    shards[key] = []
 
-        #         #sort nodes into shards
-        #         for view in views_list:
-        #             if (view == saddr): 
-        #                 print("view" , view, " and saddr ", saddr, "match")
-        #                 shardID = shardidx
-        #                 print("shard ID is: ", shardID)
-        #             if num_nodes_so_far < num_nodes_in_shard:
-        #                 shards[shardidx].append(view)
-        #                 num_nodes_so_far += 1
-        #             else:
-        #                 shardidx += 1
-        #                 num_nodes_so_far = 0
-        #                 shards[shardidx].append(view)
-                    
-        #         # if uneven # of nodes, add an extra node to the last shard
-        #         if( (len(views_list) % int(shardCount)) == 1):
-        #             shards[shardidx-1].append(views_list[-1])
-        #         print(shards)
-        #     else:
-        #         print("not enough nodes to have redundancy in shards. exiting program now")
-        #         #TODO error 404
+                # Initialize shards list
+                # first check if the number of shards specified will work.
 
-        #     # Replace key/values for all servers
-        #     for shardKey in shards.keys():
-        #         kvstore_temp = {}
-        #         for key in kvstore.keys():
-        #             if(magicHash(key) == shardKey):
-        #                 #add key to kvstore_temp if it matches the hash
-        #                 kvstore_temp[key] = kvstore[key]
-        #         for(updateShard in shards[shardKey]):
-        #             requests.put('http://'+ updateShard + "/broadcast-reshard-kvstore-put", timeout=1, json=kvstore_temp)
-        #         # broadcast replace kvstore with kvstore_temp to all nodes in shardkey
+                for key in vc.keys():
+                    print("VC at ", str(key), "set to 0")
+                    vc[str(key)] = 0
+                
+                shardCount = new_shard_count
+                print("enough in view to split into shards")
 
-        if "/broadcast-reshard-kvstore-put" in str(self.path):
+                print("shards before:", shards)
+                print("shardcount is ", shardCount)
+
+                #####################################################################
+                num_nodes_in_shard = len(views_list) // int(new_shard_count)
+                num_nodes_so_far = 0
+                shardidx = 1
+                #sort nodes into shards
+                for view in views_list:
+                    if(shardidx <= new_shard_count):
+                        if (view == saddr): 
+                            shardID = shardidx
+                        if num_nodes_so_far < num_nodes_in_shard:
+                            shards[shardidx].append(view)
+                            num_nodes_so_far += 1
+                        else:
+                            shardidx += 1
+                            if(shardidx <= new_shard_count):
+                                num_nodes_so_far = 0
+                                shards[shardidx].append(view)
+                                num_nodes_so_far += 1
+                                if (view == saddr): 
+                                    shardID = shardidx
+                # if uneven # of nodes, add an extra node to the last shard
+                if( (len(views_list) % int(new_shard_count)) == 1):
+                    shards[shardidx-1].append(views_list[-1])
+                #####################################################################
+                print("shards after:", shards)
+
+                
+            elif new_shard_count == -1:
+                print("no new shardCount specified")
+                self._set_headers(response_code=400)
+                response = bytes(json.dumps({'message' : "No shard-count specified in json"}), 'utf-8')
+                self.wfile.write(response)
+                return
+            else:
+                print("bad number provided: \nNot enough nodes to have redundancy in shards. Error 400")
+                self._set_headers(response_code=400)
+                response = bytes(json.dumps({'message' : "Not enough nodes to provide fault-tolerance with the given shard count!"}), 'utf-8')
+                self.wfile.write(response)
+                return
+
+            # Replace key/values for all servers
+            for shardKey in shards.keys():
+                kvstore_temp = {}
+                for key in kvstore.keys():
+                    if(magicHash(key, shardCount) == shardKey):
+                        #add key to kvstore_temp if it matches the hash
+                        kvstore_temp[key] = kvstore[key]
+                for updateShard in shards[shardKey]:
+                    if(str(saddr) != str(updateShard)):
+                        print("saddr is", saddr)
+                        print("update shard is", updateShard)
+                        try:
+                            print("Updating shards for replica", updateShard)
+                            r2 = requests.put('http://'+ updateShard + "/broadcast-reshard-shards-put", timeout=1, json=shards)
+                            print("Updating kvstore for replica", updateShard)
+                            r = requests.put('http://'+ updateShard + "/broadcast-reshard-kvstore-put", timeout=1, json=kvstore_temp)
+                        except:
+                            print("issue with the broadcasted update to shards or kvstore")
+                            #broadcast delete view?
+            
+            # Set the proper kvstore values for kvstore on the current saddr
+            kvstore_temp = {}
+            for key in kvstore.keys():
+                if(magicHash(key, shardCount) == shardID):
+                    #add key to kvstore_temp if it matches the hash
+                    kvstore_temp[key] = kvstore[key]
+            kvstore.clear()
+            for key in kvstore_temp:
+                kvstore[key] = kvstore_temp[key]
+
+            #send response                
+            self._set_headers(response_code=200)
+            response = bytes(json.dumps({"message": "Resharding done successfully"}), 'utf-8')
+            self.wfile.write(response)
+            
+
+        elif "/broadcast-reshard-kvstore-put" in str(self.path):
             vc.clear()
             self.data_string = self.rfile.read(int(self.headers['Content-Length']))
             data = json.loads(self.data_string)
@@ -396,14 +467,44 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                 kvstore[key] = data[key]
 
             self._set_headers(response_code=200)
-            response = bytes(json.dumps({"message": "hehe"}), 'utf-8')
+            response = bytes(json.dumps({"message": "updated kvstore correctly"}), 'utf-8')
             self.wfile.write(response)
+        
+        elif "/broadcast-reshard-shards-put" in str(self.path):
+            # global shardID
+            # global shardCount
+            self.data_string = self.rfile.read(int(self.headers['Content-Length']))
+            data = json.loads(self.data_string)
+            print("the new shards is", data)
+            shards.clear()
+            for key in data.keys():
+                shards[int(key)] = data[key]
+            
+            for key in shards.keys():
+                if(saddr in shards[key]):
+                    print("This node is being assigned to shard: ", key)
+                    shardID = int(key)
+            
+            print("broadcast view shardcount (before)", shardCount)
+            #global shardCount
+            shardCount = len(shards.keys())
+            print("broadcast view shardcount (after)", shardCount)
+            
+            for key in vc.keys():
+                print("VC at ", str(key), "set to 0")
+                vc[str(key)] = 0
+
+            self._set_headers(response_code=200)
+            response = bytes(json.dumps({"message": "updated shards correctly"}), 'utf-8')
+            self.wfile.write(response)
+            
 
         elif "/key-value-store-shard/add-member/" in str(self.path):
             self.data_string = self.rfile.read(int(self.headers['Content-Length']))
             new_string = self.data_string.decode()
             new_string = new_string.replace('{', '')
             new_string = new_string.replace('}', '')
+            new_string = new_string.replace('"', '')
             new_instance = new_string.split(": ")[1]
             shardID_str = str(self.path).split("/add-member/",1)[1]
 
@@ -439,6 +540,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(response)
 
         elif "/broadcast-shard-put" in str(self.path):
+            # global shardID
             self.data_string = self.rfile.read(int(self.headers['Content-Length']))
             data = json.loads(self.data_string)
             shardID_str = data["shard_id"]
@@ -455,7 +557,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
             print("new_instance:", str(new_instance))
             print("saddr:       ", str(saddr))
             if (str(new_instance) == str(saddr)):
-                global shardID
+                #global shardID
                 shardID = int(shardID_str)
                 print("shardID updated, update kv and vc from others in the shard.")
                 print("Shards (BEFORE) is", shards)
@@ -495,7 +597,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                             print("replica is not up yet")
 
                 for replica in views_list:
-                    vc[replica] = 0
+                    vc[str(replica)] = 0
                     if ( (replica != saddr) and (replica in shards[shardID]) and (replica != (str(self.client_address[0]) + ":8085")) ):
                         print("requesting http://" + replica + "/update-vc-store")
                         try:
@@ -503,7 +605,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                             response_json = r.json()
                             print(type(response_json))
                             for key in response_json:
-                                vc[key] = max(vc[key],response_json[key])
+                                vc[str(key)] = max(vc[str(key)],response_json[key])
                             break
                         except:
                             print("replica is not up yet")
@@ -540,7 +642,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                 print("    View was not already in views_list, adding it now.")
                 #print("    vc before adding it")
                 #print(vc)
-                vc[new_string] = 0
+                vc[str(new_string)] = 0
                 views_list.append(new_string)
                 self._set_headers(response_code=200)
                 response = bytes(json.dumps({"yee" : "fasholly", "message" : "we lit", "causal-metadata": "test" }), 'utf-8')
@@ -595,7 +697,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
             except:
                 vc_temp = ""
             for x in vc_temp:
-                vc[x] = vc_temp[x]
+                vc[str(x)] = vc_temp[str(x)]
             vc_str = json.dumps(vc_temp)
 
             if(len(keystr) > 0 and len(keystr) < 50):
@@ -621,6 +723,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
 
         else:
             if "/key-value-store/" in str(self.path):
+                # global shardID
                 self.data_string = self.rfile.read(int(self.headers['Content-Length']))
                 print(self.data_string)
                 data = json.loads(self.data_string)
@@ -632,7 +735,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
 
                 keystr = str(self.path).split("/key-value-store/",1)[1]
 
-                insertShard = magicHash(keystr)
+                insertShard = magicHash(keystr, shardCount)
                 # if this key belongs in a different shard
                 if(shardID != insertShard):
                     print("This shard does not have this key. forwarding to a node in the correct shard")
@@ -655,7 +758,10 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                             except:
                                 x = node
                                 print("    EXCEPT: broadcasting DELETE view ", x)
-                                views_list.remove(x)
+                                if(x in views_list):
+                                    views_list.remove(x)
+                                else:
+                                    print("lol")
                                 for y in views_list:
                                     print("    Broadcasting DELETE downed instance ", x, "to ", y)
                                     if (y != saddr) and (y != x):
@@ -673,32 +779,33 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                 # if the key belongs in THIS shard
                 else:
                     # check vector clock stuff against all other servers in shard (for causal consistency)
-                    for x in vc_temp:
-                        print("vc_temp[",x ,"] is ", str(vc_temp[x]))
-                        print("VC[",x,"] ", " is ", str(vc[x]))
-                        if vc_temp[x] > vc[x]:
-                            print("element is bigger kekw")
-                            for replica in views_list:
-                                if(replica in list(shards[shardID]) and (replica != saddr)):
-                                    try:
-                                        r = requests.get('http://'+ replica + "/update-kv-store", timeout=1)
-                                        response_json = r.json()
-                                        print(type(response_json))
-                                        for key in response_json:
-                                            kvstore[key] = response_json[key]
+                    if vc_temp != "":
+                        for x in vc_temp:
+                            print("vc_temp[",x ,"] is ", str(vc_temp[str(x)]))
+                            print("VC[",x,"] ", " is ", str(vc[str(x)]))
+                            if vc_temp[x] > vc[x]:
+                                print("element is bigger kekw")
+                                for replica in views_list:
+                                    if(replica in list(shards[shardID]) and (replica != saddr)):
+                                        try:
+                                            r = requests.get('http://'+ replica + "/update-kv-store", timeout=1)
+                                            response_json = r.json()
+                                            print(type(response_json))
+                                            for key in response_json:
+                                                kvstore[key] = response_json[key]
 
-                                        r = requests.get('http://'+ replica + "/update-vc-store", timeout=1)
-                                        response_json = r.json()
-                                        print(type(response_json))
-                                        for key in response_json:
-                                            vc[key] = max(vc[key],response_json[key])
-                                    except:
-                                        print("we have failed")
-                                    try:
-                                        r = requests.put('http://' + replica + "/broadcast-view-put", timeout=1, allow_redirects=False, json={"socket-address" : saddr})
-                                    except:
-                                        print("replica ", replica, " in view is not yet live.")
-                                    break
+                                            r = requests.get('http://'+ replica + "/update-vc-store", timeout=1)
+                                            response_json = r.json()
+                                            print(type(response_json))
+                                            for key in response_json:
+                                                vc[key] = max(vc[key],response_json[key])
+                                        except:
+                                            print("we have failed")
+                                        try:
+                                            r = requests.put('http://' + replica + "/broadcast-view-put", timeout=1, allow_redirects=False, json={"socket-address" : saddr})
+                                        except:
+                                            print("replica ", replica, " in view is not yet live.")
+                                        break
 
                     # do the PUT on the current node and related shards 
                     # TODO: distribute PUT to only related shards, not all
@@ -716,7 +823,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                         elif keystr in kvstore:
                             kvstore[keystr] = data["value"]
                             # INCREMENT VECTOR CLOCK
-                            vc[saddr] = vc[saddr] + 1
+                            vc[str(saddr)] = vc[str(saddr)] + 1
                             vc_str = json.dumps(vc)
 
                             # send PUT req to all other views in the same shard
@@ -729,7 +836,10 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                         else:
                             kvstore[keystr] = data["value"]
                             # INCREMENT VECTOR CLOCK
-                            vc[saddr] = vc[saddr] + 1
+                            if(str(saddr) not in vc):
+                                vc[str(saddr)] = 1
+                            else:
+                                vc[str(saddr)] = vc[str(saddr)] + 1
                             vc_str = json.dumps(vc)
 
                             # send PUT req to all other views in the same shard
@@ -751,6 +861,8 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
     
     # if the server recieves a DELETE request, it is directed here
     def do_DELETE(self):
+        global shardID
+        global shardCount
         print("\n[+] recieved DELETE request from: " + str(self.client_address[0]) + " to path: " + str(self.path) + "\n")
         view_list_str = []
         for x in views_list:
@@ -786,7 +898,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
             except:
                 vc_temp = ""
             for x in vc_temp:
-                vc[x] = vc_temp[x]
+                vc[str(x)] = vc_temp[str(x)]
             vc_str = json.dumps(vc_temp)
 
             if(len(keystr) > 0 and len(keystr) < 50):
@@ -847,7 +959,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
             data = json.loads(self.data_string)
             keystr = str(self.path).split("/key-value-store/",1)[1]
 
-            insertShard = magicHash(keystr)
+            insertShard = magicHash(keystr, shardCount)
             # if this key belongs in a different shard
             if(shardID != insertShard):
                 print("This shard does not have this key. forwarding to a node in the correct shard")
@@ -895,9 +1007,9 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                 except:
                     vc_temp = ""
                 for x in vc_temp:
-                    print("vc_temp[",x ,"] is ", str(vc_temp[x]))
-                    print("VC[",x,"] ", " is ", str(vc[x]))
-                    if vc_temp[x] > vc[x]:
+                    print("vc_temp[",x ,"] is ", str(vc_temp[str(x)]))
+                    print("VC[",x,"] ", " is ", str(vc[str(x)]))
+                    if vc_temp[str(x)] > vc[str(x)]:
                         for replica in views_list:
                             if(replica in list(shards[shardID]) and (replica != saddr)):
                                 try:
@@ -911,7 +1023,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                                     response_json = r.json()
                                     print(type(response_json))
                                     for key in response_json:
-                                        vc[key] = max(vc[key],response_json[key])
+                                        vc[str(key)] = max(vc[str(key)],response_json[key])
                                 except:
                                     print("we have failed")
                                 try:
@@ -923,7 +1035,7 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
                 if(len(keystr) > 0 and len(keystr) < 50):
                     if keystr in kvstore:
                         # INCREMENT VECTOR CLOCK
-                        vc[saddr] = vc[saddr] + 1
+                        vc[str(saddr)] = vc[str(saddr)] + 1
                         vc_str = json.dumps(vc) 
                         # Send key DELETE to all other replicas
                         for replica in views_list:
@@ -999,7 +1111,7 @@ def run(server_class=http.server.HTTPServer, handler_class=requestHandler, addr=
                     print("replica is not up yet")
 
         for replica in views_list:
-            vc[replica] = 0
+            vc[str(replica)] = 0
             if (replica != saddr) and (replica in list(shards[shardID])):
                 print("requesting http://" + replica + "/update-vc-store")
                 try:
@@ -1007,11 +1119,11 @@ def run(server_class=http.server.HTTPServer, handler_class=requestHandler, addr=
                     response_json = r.json()
                     print(type(response_json))
                     for key in response_json:
-                        vc[key] = max(vc[key],response_json[key])
+                        vc[str(key)] = max(vc[str(key)],response_json[key])
                     break
                 except:
                     print("replica is not up yet")
-            print("Vector clock of ", replica, " is ", vc[replica])
+            print("Vector clock of ", replica, " is ", vc[str(replica)])
     else:
         print("shardID uninitialized, will update kvstore later.")
 
