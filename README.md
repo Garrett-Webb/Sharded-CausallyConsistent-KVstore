@@ -19,18 +19,19 @@ follow for our own server
 * Used to understand how headers are used and formatted in python requests.
 * `https://www.kite.com/python/answers/how-to-check-if-a-list-contains-a-substring-in-python`
 * Used to identify if a view operation is coming from an IP that belongs to a replica instead of a client.
+* `https://www.w3schools.com/python/python_variables_global.asp`
+* Used to learn how to modify global variables in python.
 
 
 ## Team Contributions:
-* `all together:` We worked on the entire project together over a call with Visual Studio Code Live Share enabled. This allowed us to all look at and modify the same files. This included group debugging and talking over the ideas and implementation as a group. We alternated the roles of who would code while the others watched and helped. All work described below was done by the individual with the team supporting.
+* `all together:`  We worked on the entire project together over a call with Visual Studio Code Live Share enabled. This allowed us to all look at and modify the same files. This included group debugging and talking over the ideas and implementation as a group. We alternated the roles of who would code while the others watched and helped. All work described below was done by the individual with the team supporting.
 
+* `Garrett:` Developed majority of helper endpoints. With the help of my groupmates, I added the helper endpoints for the sharding operations, helper endpoints, and modified the keyvalue store functionality to operate in a sharded manner. Also helped with the documentation and creation of resharding mechanism.
 
-* `Garrett:` Worked together with group. With the help of my groupmates, I added the helper endpoints for the sharding operations, helper endpoints, and modified the keyvalue store functionality to operate in a sharded manner. Also helped with the documentation and creation of resharding mechanism.
+* `Rahul:` Derived logic for reshard. Determined what data structures to use for storing shards and shard information. Developed VC logic. Coded alongside Garrett and Kai using VSCode Live Share
 
-* `Rahul:` Worked together with group. Created the Hashing and functionality for distribution of key values evenly among the shards. Helped with the creation of the resharding mechanism
-
-* `Kai:` Worked together with group. Testing mastermind.
+* `Kai:` Setup the testing/debugging routine and performed most of the testings. Started the initial key-value-store-view operation which built the base structure for rest of the request handling.
 
 
 ## Acknowledgements:
-* `Vinay Venkat (tutor):`  Provided us with a basic overview of a potential way to use vector clocks within our environment during his tutoring session.
+* `Vinay Venkat (tutor):` Helped us with Assignment 3, which was used as a base for Assignment 4. Provided us with a basic overview of a potential way to use vector clocks within our environment during his tutoring session. 

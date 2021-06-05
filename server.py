@@ -458,7 +458,6 @@ class requestHandler(http.server.BaseHTTPRequestHandler):
             
 
         elif "/broadcast-reshard-kvstore-put" in str(self.path):
-            vc.clear()
             self.data_string = self.rfile.read(int(self.headers['Content-Length']))
             data = json.loads(self.data_string)
             print("the new kvstore is", data)
