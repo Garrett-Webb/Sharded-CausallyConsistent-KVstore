@@ -1,10 +1,9 @@
 # Mechanism Description
 the description of the mechanisms implemented for causal dependency tracking and detecting that a replica is down
 
-* `Assignment 3`
-* `Garrett Webb` : cruzid: `gswebb`
-* `Kai Hsieh` : cruzid: `kahsieh`
-* `Rahul Arora` : cruzid: `raarora`
+* `Garrett Webb`
+* `Kai Hsieh`
+* `Rahul Arora`
 
 ## Sharding Mechanism
 * We attempt to divide views evenly into shards. If there is an odd number of shards, we will add an extra view to the last shard.
@@ -27,7 +26,7 @@ the description of the mechanisms implemented for causal dependency tracking and
 * Our hash function, magicHash, takes the sum of a bytearray of the utf-8 encoding of the given key. We then take the modulo of this value with the number of shards we have, to get a value between 0 and (numShards-1). We then add 1 to this number, as our shardIDs begin at 1, rather than 0
 * This hashing function is consistent accross all nodes because instead of using a built-in hashing function that uses a random seed for each separate program, the sum of the bytearray is a consistent number that will yield the same result no matter which node does the calculating.
 
-# Legacy from Assignment 3
+
 ## Causal Consistency Mechanism
 * We made the graph below as a guide for how to implement the causal consistency portion of this project.
 * ![graph](images/mechanism_graph.png)
@@ -49,9 +48,3 @@ updated vector clock as casual metadata, causing them to update their vector clo
 * The thought process behind this was that if on any broadcasted request, there is no response from the broadcastee, that means that the instance is either down or disconnected and must be removed from the views list, which is shared by all the instances. This is why the view-delete operation is then broadcasted.
 * One false positive that could happen in this model is the case of one of the broadcastee instances being slow to respond. This could happen for many reasons, including the case that the instance is broadcasting and waiting for responses itself. In this case, the instance would not be able to respond before the timeout of 1 second that we specified. The timeout is low because with all of these instances being run on the same system through docker, a successful connection should never take that long.
 * One false negative that could happen in this model is the case of one of the broadcastee instances responds and then fails post-request. The request to check if the replica was alive would have succeeded, but the replica would have died immediately after.
-
-
-
-The mechanism-description.md file contains a thorough and clear description of the causal dependency tracking mechanism. The description explains how the mechanism was implemented, what data structures and algorithms were used, and the rationale for any design decisions. In particular, the description covers how the KVS handles scenarios in which a replica receives a request with causal metadata indicating that the request shouldn't be served immediately.
-
-The mechanism-description.md file contains a thorough and clear description of the replica failure detection mechanism. The description explains how the mechanism was implemented, what data structures and algorithms were used, and the rationale for any design decisions. In particular, the description covers what circumstances, if any, could lead to a false positive (a replica is deemed to be down when it is up) or a false negative (a replica is deemed to be up when it is down).
